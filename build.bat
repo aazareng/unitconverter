@@ -9,9 +9,13 @@ rem  Everything happens in a throwaway venv (build-env\) so that whatever
 rem  is installed in your main Python cannot leak into the bundle -- that
 rem  is the single biggest cause of a bloated exe.
 rem
-rem  UPX roughly halves the result. Drop upx.exe in a folder named upx\
-rem  beside this script, or set UPX_DIR, and it is used automatically.
-rem  Heads up: UPX-packed exes are a common antivirus false positive.
+rem  UPX: drop upx.exe in a folder named upx\ beside this script, or set
+rem  UPX_DIR, and it is used automatically. Manage your expectations -- a
+rem  onefile bundle is ALREADY zlib-compressed internally, so UPX has little
+rem  left to squeeze and typically saves only a few hundred KB (sometimes
+rem  nothing). It pays off properly in an onedir build, where the DLLs sit
+rem  uncompressed on disk. Heads up: UPX-packed exes are a common antivirus
+rem  false positive, so weigh that against the gain.
 rem ---------------------------------------------------------------------
 setlocal
 cd /d "%~dp0"
@@ -25,8 +29,17 @@ if /i "%~1"=="onedir" (
 )
 
 rem --- locate a Python -------------------------------------------------
+rem  Prefer an older interpreter: python314.dll is 6.8 MB where python312.dll
+rem  is ~5.5 MB, and that difference lands straight in the exe.
 set "PY_CMD="
-py -3 --version >nul 2>&1 && set "PY_CMD=py -3"
+for %%V in (3.12 3.11 3.13 3.10) do (
+    if not defined PY_CMD (
+        py -%%V --version >nul 2>&1 && set "PY_CMD=py -%%V"
+    )
+)
+if not defined PY_CMD (
+    py -3 --version >nul 2>&1 && set "PY_CMD=py -3"
+)
 if not defined PY_CMD (
     python --version >nul 2>&1 && set "PY_CMD=python"
 )
@@ -86,4 +99,6 @@ if defined UC_ONEDIR (
 )
 echo.
 echo [*] Launch it once now to confirm it opens before you hand it out.
+echo [*] To see where the bytes went:
+echo       build-env\Scripts\python.exe tools\exe_report.py dist\unit_converter.exe
 endlocal
