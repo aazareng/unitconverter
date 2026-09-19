@@ -11,10 +11,13 @@ Examples
     (3+2)*4in         -> 508 mm
     72F               -> 22.22 C     (temperature, base = C)
     5kg-200g          -> 10.582 lb   (mass, base = lb)
+    2gal+1qt          -> 8.5172 L    (volume, base = L)
+    500ml             -> 0.5 L       (volume)
+    3in3              -> 0.0492 L    (cubic units: in3, m^3, cm³ ...)
     12mm/3mm          -> 4           (a ratio: dimensionless)
     45                -> shows the old "interpret as everything" table
 
-Base units: length = mm, temperature = C, mass = lb.
+Base units: length = mm, temperature = C, mass = lb, volume = L.
 
 Rules
 -----
@@ -37,7 +40,7 @@ DECIMALS = 4
 
 # --- unit registry --------------------------------------------------------
 # Linear units: base_value = value * factor.  Base per dimension:
-#   length -> mm,  mass -> lb.
+#   length -> mm,  mass -> lb,  volume -> L.
 LINEAR_UNITS = {
     # length (to mm)
     "mm": ("length", 1.0), "millimeter": ("length", 1.0), "millimeters": ("length", 1.0),
@@ -58,6 +61,30 @@ LINEAR_UNITS = {
     "st": ("mass", 14.0), "stone": ("mass", 14.0),
     "ton": ("mass", 2000.0),       # US short ton
     "tonne": ("mass", 2204.62262), "t": ("mass", 2204.62262),  # metric tonne
+    # volume / capacity (to L)
+    "l": ("volume", 1.0), "liter": ("volume", 1.0), "liters": ("volume", 1.0),
+    "litre": ("volume", 1.0), "litres": ("volume", 1.0),
+    "ml": ("volume", 0.001), "milliliter": ("volume", 0.001), "millilitre": ("volume", 0.001),
+    "cl": ("volume", 0.01), "dl": ("volume", 0.1), "kl": ("volume", 1000.0),
+    "cc": ("volume", 0.001),
+    "mm3": ("volume", 1e-6), "cm3": ("volume", 0.001),
+    "m3": ("volume", 1000.0), "cbm": ("volume", 1000.0),
+    "in3": ("volume", 0.016387064), "cuin": ("volume", 0.016387064),
+    "ft3": ("volume", 28.316846592), "cuft": ("volume", 28.316846592),
+    "yd3": ("volume", 764.554857984), "cuyd": ("volume", 764.554857984),
+    # US liquid measure
+    "floz": ("volume", 0.0295735295625), "fluidounce": ("volume", 0.0295735295625),
+    "tsp": ("volume", 0.00492892159375), "teaspoon": ("volume", 0.00492892159375),
+    "tbsp": ("volume", 0.01478676478125), "tablespoon": ("volume", 0.01478676478125),
+    "cup": ("volume", 0.2365882365), "cups": ("volume", 0.2365882365),
+    "pt": ("volume", 0.473176473), "pint": ("volume", 0.473176473),
+    "qt": ("volume", 0.946352946), "quart": ("volume", 0.946352946),
+    "gal": ("volume", 3.785411784), "gallon": ("volume", 3.785411784),
+    "gallons": ("volume", 3.785411784),
+    "bbl": ("volume", 158.987294928),   # 42-gal oil barrel
+    # Imperial liquid measure
+    "impfloz": ("volume", 0.0284130625), "imppt": ("volume", 0.56826125),
+    "impqt": ("volume", 1.1365225), "impgal": ("volume", 4.54609),
 }
 
 # Temperature is affine, so it needs explicit to/from-base (base = C).
@@ -71,9 +98,13 @@ TEMP_UNITS = {
 LENGTH_OUT = [("mm", "mm"), ("cm", "cm"), ("m", "m"),
               ("in", "in"), ("ft", "ft"), ("yd", "yd"), ("thou", "thou")]
 MASS_OUT = [("lb", "lb"), ("oz", "oz"), ("g", "g"), ("kg", "kg")]
+VOLUME_OUT = [("mL", "ml"), ("L", "l"), ("fl oz", "floz"), ("cup", "cup"),
+              ("pt", "pt"), ("qt", "qt"), ("gal", "gal"),
+              ("in³", "in3"), ("ft³", "ft3")]
 TEMP_OUT = [("°C", "c"), ("°F", "f"), ("K", "k")]
 
-DIM_LABEL = {"length": "length", "mass": "mass/weight", "temperature": "temperature"}
+DIM_LABEL = {"length": "length", "mass": "mass/weight",
+             "temperature": "temperature", "volume": "volume"}
 
 
 class Quantity:
@@ -113,6 +144,14 @@ def tokenize(text):
             k = i
             while k < n and (text[k].isalpha() or text[k] in "°'\"µ"):
                 k += 1
+            # a cubic/square marker may be glued on: in3, m^3, cm³.  Only take
+            # it when it really forms a known unit, so "5ft2" still parses the
+            # old way (5 ft plus a bare 2).
+            if k > i:
+                for extra in (2, 1):
+                    if k + extra <= n and is_known_unit(text[i:k + extra]):
+                        k += extra
+                        break
             unit = text[i:k]
             i = k
             tokens.append(("num", value, unit or None))
@@ -121,11 +160,22 @@ def tokenize(text):
     return tokens
 
 
+def unit_key(unit):
+    """Canonical registry key for a unit as typed ('M^3' -> 'm3')."""
+    u = (unit.replace("°", "").replace("µ", "u").replace("^", "")
+             .replace("³", "3").replace("²", "2"))
+    return u.lower() if u not in ("'", '"') else u
+
+
+def is_known_unit(unit):
+    key = unit_key(unit)
+    return key in TEMP_UNITS or key in LINEAR_UNITS
+
+
 def unit_to_quantity(value, unit):
     if unit is None:
         return Quantity(value, None)
-    u = unit.replace("°", "").replace("µ", "u")
-    key = u.lower() if u not in ("'", '"') else u
+    key = unit_key(unit)
     if key in TEMP_UNITS:
         to_base, _ = TEMP_UNITS[key]
         return Quantity(to_base(value), "temperature")
@@ -266,6 +316,9 @@ def conversions_for(q, had_unit):
     if q.dim == "mass":
         rows = [(lbl, fmt(from_base_linear(q.base, key))) for lbl, key in MASS_OUT]
         return (f"= {fmt(q.base)} lb  (mass)", rows)
+    if q.dim == "volume":
+        rows = [(lbl, fmt(from_base_linear(q.base, key))) for lbl, key in VOLUME_OUT]
+        return (f"= {fmt(q.base)} L  (volume)", rows)
     if q.dim == "temperature":
         rows = [(lbl, fmt(TEMP_UNITS[key][1](q.base))) for lbl, key in TEMP_OUT]
         return (f"= {fmt(q.base)} °C  (temperature)", rows)
@@ -284,6 +337,8 @@ def conversions_for(q, had_unit):
         ("oz → g", fmt(v * 28.349523125)),
         ("lb → kg", fmt(v * 0.45359237)),
         ("kg → lb", fmt(v * 2.20462262185)),
+        ("L → gal", fmt(v / 3.785411784)),
+        ("gal → L", fmt(v * 3.785411784)),
     ]
     return (f"{fmt(v)}  (no unit — showing all interpretations)", rows)
 
@@ -293,11 +348,14 @@ def load_custom_units(ini_path):
     if not ini_path.exists():
         ini_path.write_text(
             "; Add your own units here. Factor converts TO the base unit.\n"
-            "; Base units: length = mm, mass = lb.  (temperature is built in)\n"
+            "; Base units: length = mm, mass = lb, volume = L."
+            "  (temperature is built in)\n"
             "[LENGTH]\n"
-            "; pt = 0.352778     ; typographic point -> mm\n"
+            "; point = 0.352778   ; typographic point -> mm\n"
             "[MASS]\n"
-            "; grain = 0.000142857  ; grain -> lb\n",
+            "; grain = 0.000142857  ; grain -> lb\n"
+            "[VOLUME]\n"
+            "; drop = 0.00005      ; drop -> L\n",
             encoding="utf-8",
         )
         return
@@ -306,7 +364,8 @@ def load_custom_units(ini_path):
         parser.read(ini_path, encoding="utf-8")
     except configparser.Error:
         return
-    for section, dim in (("LENGTH", "length"), ("MASS", "mass")):
+    for section, dim in (("LENGTH", "length"), ("MASS", "mass"),
+                         ("VOLUME", "volume")):
         if parser.has_section(section):
             for alias, raw in parser.items(section):
                 try:
