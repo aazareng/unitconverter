@@ -1,6 +1,10 @@
 """
 Unit Converter / calculator — Python replacement for A.Azar's AHK converter.
 
+KEPT FOR REFERENCE ONLY. The maintained version is UnitConverter.cs (build
+with build_cs.bat); this file still runs with plain Python but is no longer
+built into an exe.
+
 Type a unit-aware expression and it evaluates to a base unit, then shows
 conversions within that dimension. Click any row (or its copy button) to copy.
 
