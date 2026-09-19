@@ -1,0 +1,35 @@
+# --- PyInstaller build output ---
+build/
+dist/
+build-env/
+upx/
+*.manifest
+
+# Keep unit_converter.spec: it is the build recipe, not an artifact.
+# Any OTHER spec PyInstaller auto-generates is throwaway:
+*.spec
+!unit_converter.spec
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# --- Built binaries ---
+# NOTE: unit_converter.exe is still tracked from an earlier upload, so this
+# line does not affect it yet. To stop shipping a 13 MB blob per rebuild:
+#     git rm --cached unit_converter.exe
+# and attach the binary to a GitHub Release instead. (Past copies stay in
+# history either way.)
+*.exe
+
+# --- Local user config, written next to the app on first run ---
+unit_converter.ini
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
